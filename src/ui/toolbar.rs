@@ -65,6 +65,8 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         tool_button(ui, state, ActiveTool::Arrow, "→", "Draw arrow");
         tool_button(ui, state, ActiveTool::Signature, "✍", "Add e-signature");
         tool_button(ui, state, ActiveTool::Eraser, "⌫", "Erase annotation");
+        tool_button(ui, state, ActiveTool::Underline, "U̲", "Underline");
+        tool_button(ui, state, ActiveTool::Strikethrough, "S̶", "Strikethrough");
 
         ui.separator();
 
