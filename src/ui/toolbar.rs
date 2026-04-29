@@ -113,6 +113,11 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
                 state.action_export_docx = true;
                 ui.close_menu();
             }
+            ui.separator();
+            if ui.button("⚙ Export options…").clicked() {
+                state.show_export_dialog = true;
+                ui.close_menu();
+            }
         });
 
         // ── Print ─────────────────────────────────────────────────────────
