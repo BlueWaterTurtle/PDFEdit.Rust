@@ -12,6 +12,9 @@ const MIN_DRAG_AREA: f32 = 4.0;
 /// Length of arrowhead side segments (pixels)
 const ARROW_HEAD_LEN: f32 = 12.0;
 
+/// Pixel size of the comment sticky-note icon rendered on the canvas
+const COMMENT_ICON_SIZE: f32 = 24.0;
+
 /// Drag state for in-progress annotation creation
 #[derive(Debug, Default)]
 pub struct DragState {
@@ -284,6 +287,23 @@ fn draw_annotation(
             painter.line_segment([tp, h1], stroke);
             painter.line_segment([tp, h2], stroke);
         }
+        AnnotationType::Comment { color, .. } => {
+            // Draw a small coloured note icon at the annotation anchor
+            let icon_size = Vec2::splat(COMMENT_ICON_SIZE);
+            let icon_rect = Rect::from_min_size(pr.min, icon_size);
+            painter.rect_filled(icon_rect, 4.0, arr_to_color32(*color));
+            painter.rect_stroke(icon_rect, 4.0, Stroke::new(1.0, Color32::from_gray(80)));
+            painter.text(
+                icon_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "💬",
+                egui::FontId::proportional(14.0),
+                Color32::BLACK,
+            );
+            if selected {
+                painter.rect_stroke(icon_rect, 4.0, sel_stroke);
+            }
+        }
     }
 }
 
@@ -510,6 +530,21 @@ fn handle_input(
             None
         }
 
+        ActiveTool::Comment => {
+            if response.clicked() && on_page {
+                let rel = normalise(pointer, page_rect);
+                // Store a small fixed-size rect for the comment icon anchor
+                state.pending_annotation_rect = Some([
+                    rel.x,
+                    rel.y,
+                    (rel.x + 0.04).min(1.0),
+                    (rel.y + 0.04).min(1.0),
+                ]);
+                state.show_comment_dialog = true;
+            }
+            None
+        }
+
         ActiveTool::Underline | ActiveTool::Strikethrough => {
             let ink = state.ink_color;
             let is_underline = matches!(state.active_tool, ActiveTool::Underline);
@@ -610,6 +645,7 @@ fn tool_cursor(tool: &ActiveTool) -> CursorIcon {
         ActiveTool::Rectangle => CursorIcon::Crosshair,
         ActiveTool::Arrow => CursorIcon::Crosshair,
         ActiveTool::Signature => CursorIcon::PointingHand,
+        ActiveTool::Comment => CursorIcon::PointingHand,
         ActiveTool::Eraser => CursorIcon::NoDrop,
     }
 }

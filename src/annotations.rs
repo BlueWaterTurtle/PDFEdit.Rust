@@ -49,6 +49,15 @@ pub enum AnnotationType {
         color: [u8; 4],
         stroke_width: f32,
     },
+    /// A sticky-note comment anchored to a point on the page
+    Comment {
+        /// Short one-line subject / title
+        subject: String,
+        /// Full comment body
+        content: String,
+        /// Icon background colour
+        color: [u8; 4],
+    },
 }
 
 /// A single annotation placed on a specific page

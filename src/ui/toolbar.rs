@@ -59,6 +59,7 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         tool_button(ui, state, ActiveTool::Select, "↖", "Select / move");
         tool_button(ui, state, ActiveTool::Highlight, "🖍", "Highlight text");
         tool_button(ui, state, ActiveTool::TextBox, "T", "Add text box");
+        tool_button(ui, state, ActiveTool::Comment, "💬", "Add comment");
         tool_button(ui, state, ActiveTool::FreehandDraw, "✏", "Freehand draw");
         tool_button(ui, state, ActiveTool::Rectangle, "▭", "Draw rectangle");
         tool_button(ui, state, ActiveTool::Arrow, "→", "Draw arrow");

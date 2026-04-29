@@ -116,7 +116,93 @@ pub fn show_right_sidebar(ui: &mut Ui, state: &mut AppState) {
                 ui.output_mut(|o| o.copied_text = ocr_text.clone());
             }
         }
+
+        // ── Comments panel ───────────────────────────────────────────────
+        show_comments_panel(ui, state);
     });
+}
+
+/// Shows a panel listing all Comment annotations for the current page with full detail.
+fn show_comments_panel(ui: &mut Ui, state: &mut AppState) {
+    // Collect comment data as flat tuples (author, timestamp, subject, content, color)
+    let entries: Vec<(String, String, String, String, [u8; 4])> =
+        if let Some(doc) = &state.document {
+            doc.annotations
+                .iter()
+                .filter(|a| {
+                    a.page == state.current_page
+                        && matches!(a.annotation_type, AnnotationType::Comment { .. })
+                })
+                .map(|a| {
+                    let (subject, content, color) = match &a.annotation_type {
+                        AnnotationType::Comment { subject, content, color } => {
+                            (subject.clone(), content.clone(), *color)
+                        }
+                        _ => unreachable!(),
+                    };
+                    (
+                        a.author.clone(),
+                        a.created_at.format("%Y-%m-%d %H:%M").to_string(),
+                        subject,
+                        content,
+                        color,
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+    if entries.is_empty() {
+        return;
+    }
+
+    ui.separator();
+    let header = RichText::new(format!("💬 Comments ({})", entries.len())).strong();
+    egui::CollapsingHeader::new(header)
+        .default_open(true)
+        .id_salt("comments_panel")
+        .show(ui, |ui| {
+            ScrollArea::vertical()
+                .id_salt("comments_scroll")
+                .max_height(300.0)
+                .show(ui, |ui| {
+                    for (author, ts, subject, content, color) in &entries {
+                        let bg = crate::annotations::arr_to_color32(*color)
+                            .to_opaque()
+                            .linear_multiply(0.25);
+
+                        egui::Frame::none()
+                            .fill(bg)
+                            .inner_margin(egui::Margin::same(6.0))
+                            .rounding(egui::Rounding::same(4.0))
+                            .show(ui, |ui| {
+                                // Header row: icon + subject
+                                ui.horizontal(|ui| {
+                                    let dot_color = crate::annotations::arr_to_color32(*color);
+                                    ui.colored_label(dot_color, "💬");
+                                    if subject.is_empty() {
+                                        ui.label(RichText::new("(no subject)").italics().small());
+                                    } else {
+                                        ui.label(RichText::new(subject).strong());
+                                    }
+                                });
+                                // Author & timestamp
+                                ui.label(
+                                    RichText::new(format!("{} · {}", author, ts))
+                                        .small()
+                                        .color(Color32::GRAY),
+                                );
+                                // Content body
+                                if !content.is_empty() {
+                                    ui.separator();
+                                    ui.label(content.as_str());
+                                }
+                            });
+                        ui.add_space(4.0);
+                    }
+                });
+        });
 }
 
 fn annotation_icon(t: &AnnotationType) -> &'static str {
@@ -129,6 +215,7 @@ fn annotation_icon(t: &AnnotationType) -> &'static str {
         AnnotationType::Strikethrough { .. } => "S̶",
         AnnotationType::Rectangle { .. } => "▭",
         AnnotationType::Arrow { .. } => "→",
+        AnnotationType::Comment { .. } => "💬",
     }
 }
 
@@ -149,5 +236,17 @@ fn annotation_label(t: &AnnotationType) -> String {
         AnnotationType::Strikethrough { .. } => "Strikethrough".to_string(),
         AnnotationType::Rectangle { .. } => "Rectangle".to_string(),
         AnnotationType::Arrow { .. } => "Arrow".to_string(),
+        AnnotationType::Comment { subject, .. } => {
+            if subject.is_empty() {
+                "Comment".to_string()
+            } else {
+                let preview: String = subject.chars().take(22).collect();
+                if subject.len() > 22 {
+                    format!("💬 {}…", preview)
+                } else {
+                    format!("💬 {}", preview)
+                }
+            }
+        }
     }
 }

@@ -149,9 +149,63 @@ pub fn show_status_bar(ctx: &Context, state: &mut AppState) {
     });
 }
 
+/// Modal dialog for adding a comment / sticky-note annotation
+pub fn show_comment_dialog(ctx: &Context, state: &mut AppState) {
+    if !state.show_comment_dialog {
+        return;
+    }
+
+    let mut open = state.show_comment_dialog;
+    let mut apply = false;
+    let mut cancel = false;
+
+    Window::new("💬 Add Comment")
+        .open(&mut open)
+        .resizable(false)
+        .min_width(360.0)
+        .show(ctx, |ui| {
+            ui.label("Subject:");
+            ui.add(
+                egui::TextEdit::singleline(&mut state.comment_subject)
+                    .desired_width(330.0)
+                    .hint_text("e.g. Needs revision"),
+            );
+            ui.add_space(4.0);
+            ui.label("Comment:");
+            ui.add(
+                egui::TextEdit::multiline(&mut state.comment_content)
+                    .desired_width(330.0)
+                    .desired_rows(5)
+                    .hint_text("Type your comment here…"),
+            );
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                ui.label("Icon colour:");
+                ui.color_edit_button_srgba(&mut state.comment_color);
+            });
+            ui.separator();
+            ui.horizontal(|ui| {
+                if ui.button("✔ Add Comment").clicked() {
+                    apply = true;
+                }
+                if ui.button("✖ Cancel").clicked() {
+                    cancel = true;
+                }
+            });
+        });
+
+    if apply {
+        state.action_apply_comment = true;
+        state.show_comment_dialog = false;
+    } else if cancel {
+        state.show_comment_dialog = false;
+    } else {
+        state.show_comment_dialog = open;
+    }
+}
+
 /// Export options dialog
-pub fn show_export_dialog(ctx: &Context, state: &mut AppState) {
-    if !state.show_export_dialog {
+pub fn show_export_dialog(ctx: &Context, state: &mut AppState) {    if !state.show_export_dialog {
         return;
     }
 

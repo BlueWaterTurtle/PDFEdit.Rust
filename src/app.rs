@@ -11,7 +11,7 @@ use crate::ocr::ocr_page;
 use crate::signature::SignaturePad;
 use crate::ui::{
     canvas::{show_canvas, DragState},
-    dialogs::{show_export_dialog, show_info_dialog, show_signature_dialog, show_status_bar, show_textbox_dialog},
+    dialogs::{show_comment_dialog, show_export_dialog, show_info_dialog, show_signature_dialog, show_status_bar, show_textbox_dialog},
     sidebar::{show_left_sidebar, show_right_sidebar},
     toolbar::show_toolbar,
 };
@@ -30,6 +30,7 @@ pub enum ActiveTool {
     Eraser,
     Underline,
     Strikethrough,
+    Comment,
 }
 
 impl Default for ActiveTool {
@@ -69,6 +70,11 @@ pub struct AppState {
     pub textbox_font_size: f32,
     pub textbox_color: Color32,
 
+    // Comment dialog state
+    pub comment_subject: String,
+    pub comment_content: String,
+    pub comment_color: Color32,
+
     // Undo / redo stacks (store full annotation vecs)
     pub undo_stack: Vec<Vec<Annotation>>,
     pub redo_stack: Vec<Vec<Annotation>>,
@@ -82,6 +88,7 @@ pub struct AppState {
     pub show_textbox_dialog: bool,
     pub show_signature_dialog: bool,
     pub show_export_dialog: bool,
+    pub show_comment_dialog: bool,
     pub status_message: Option<String>,
     pub status_timer: f64,
 
@@ -106,6 +113,7 @@ pub struct AppState {
     pub action_print: bool,
     pub action_apply_textbox: bool,
     pub action_apply_signature: bool,
+    pub action_apply_comment: bool,
 }
 
 impl AppState {
@@ -126,6 +134,9 @@ impl AppState {
             textbox_content: String::new(),
             textbox_font_size: 14.0,
             textbox_color: Color32::BLACK,
+            comment_subject: String::new(),
+            comment_content: String::new(),
+            comment_color: Color32::from_rgb(255, 210, 50),
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
             page_textures: HashMap::new(),
@@ -134,6 +145,7 @@ impl AppState {
             show_textbox_dialog: false,
             show_signature_dialog: false,
             show_export_dialog: false,
+            show_comment_dialog: false,
             status_message: None,
             status_timer: 0.0,
             ocr_result_text: None,
@@ -152,6 +164,7 @@ impl AppState {
             action_print: false,
             action_apply_textbox: false,
             action_apply_signature: false,
+            action_apply_comment: false,
         }
     }
 
@@ -450,6 +463,24 @@ impl eframe::App for PdfEditorApp {
             }
         }
 
+        if s.action_apply_comment {
+            s.action_apply_comment = false;
+            if let Some(rect) = s.pending_annotation_rect.take() {
+                let ann = Annotation::new(
+                    s.current_page,
+                    rect,
+                    AnnotationType::Comment {
+                        subject: s.comment_subject.clone(),
+                        content: s.comment_content.clone(),
+                        color: color32_to_arr(s.comment_color),
+                    },
+                );
+                s.add_annotation(ann);
+                s.comment_subject.clear();
+                s.comment_content.clear();
+            }
+        }
+
         // ── Layout ────────────────────────────────────────────────────────
 
         // Status bar (bottom)
@@ -494,6 +525,7 @@ impl eframe::App for PdfEditorApp {
         show_textbox_dialog(ctx, s);
         show_signature_dialog(ctx, s);
         show_export_dialog(ctx, s);
+        show_comment_dialog(ctx, s);
 
         // Request repaint while dragging or during active animations
         if s.drag_state.start.is_some() || s.status_timer > 0.0 {
