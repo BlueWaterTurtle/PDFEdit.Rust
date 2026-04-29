@@ -83,12 +83,17 @@ pub fn ocr_document(pdf_path: &Path, page_count: usize) -> Vec<OcrResult> {
         return Vec::new();
     }
 
-    let mut page_files: Vec<_> = std::fs::read_dir(tmp.path())
-        .unwrap_or_else(|_| panic!("read_dir failed"))
-        .filter_map(|e| e.ok())
-        .map(|e| e.path())
-        .filter(|p| p.extension().map(|x| x == "png").unwrap_or(false))
-        .collect();
+    let mut page_files: Vec<_> = match std::fs::read_dir(tmp.path()) {
+        Ok(rd) => rd
+            .filter_map(|e| e.ok())
+            .map(|e| e.path())
+            .filter(|p| p.extension().map(|x| x == "png").unwrap_or(false))
+            .collect(),
+        Err(e) => {
+            warn!("Could not read OCR temp dir: {e}");
+            return Vec::new();
+        }
+    };
     page_files.sort();
 
     let mut results = Vec::new();

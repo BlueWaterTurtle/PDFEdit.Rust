@@ -1,6 +1,9 @@
 use egui::{Color32, Pos2, Stroke, Ui};
 use serde::{Deserialize, Serialize};
 
+/// Pixel margin around the rendered signature image
+const SIG_RENDER_MARGIN: f32 = 8.0;
+
 /// State for the e-signature drawing pad
 #[derive(Debug, Default)]
 pub struct SignaturePad {
@@ -179,14 +182,13 @@ impl SignaturePad {
 
                 let span_x = (max_x - min_x).max(1.0);
                 let span_y = (max_y - min_y).max(1.0);
-                let margin = 8.0_f32;
-                let scale_x = (width as f32 - 2.0 * margin) / span_x;
-                let scale_y = (height as f32 - 2.0 * margin) / span_y;
+                let scale_x = (width as f32 - 2.0 * SIG_RENDER_MARGIN) / span_x;
+                let scale_y = (height as f32 - 2.0 * SIG_RENDER_MARGIN) / span_y;
                 let scale = scale_x.min(scale_y);
 
                 let map = |p: Pos2| -> (i32, i32) {
-                    let x = ((p.x - min_x) * scale + margin) as i32;
-                    let y = ((p.y - min_y) * scale + margin) as i32;
+                    let x = ((p.x - min_x) * scale + SIG_RENDER_MARGIN) as i32;
+                    let y = ((p.y - min_y) * scale + SIG_RENDER_MARGIN) as i32;
                     (x, y)
                 };
 

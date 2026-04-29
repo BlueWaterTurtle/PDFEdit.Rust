@@ -6,6 +6,12 @@ use egui::{
 use crate::annotations::{arr_to_color32, Annotation, AnnotationType};
 use crate::app::{ActiveTool, AppState};
 
+/// Minimum drag area (pixels²) required to create a rectangle/highlight annotation
+const MIN_DRAG_AREA: f32 = 4.0;
+
+/// Length of arrowhead side segments (pixels)
+const ARROW_HEAD_LEN: f32 = 12.0;
+
 /// Drag state for in-progress annotation creation
 #[derive(Debug, Default)]
 pub struct DragState {
@@ -273,9 +279,8 @@ fn draw_annotation(
             // Arrowhead
             let dir = (tp - fp).normalized();
             let perp = Vec2::new(-dir.y, dir.x);
-            let head_len = 12.0;
-            let h1 = tp - dir * head_len + perp * (head_len * 0.5);
-            let h2 = tp - dir * head_len - perp * (head_len * 0.5);
+            let h1 = tp - dir * ARROW_HEAD_LEN + perp * (ARROW_HEAD_LEN * 0.5);
+            let h2 = tp - dir * ARROW_HEAD_LEN - perp * (ARROW_HEAD_LEN * 0.5);
             painter.line_segment([tp, h1], stroke);
             painter.line_segment([tp, h2], stroke);
         }
@@ -543,7 +548,7 @@ where
     }
     if response.drag_stopped() {
         if let Some(drag_rect) = state.drag_state.rect() {
-            if drag_rect.area() > 4.0 {
+            if drag_rect.area() > MIN_DRAG_AREA {
                 let clipped = clip_to_page(drag_rect, page_rect);
                 let norm = normalise_rect(clipped, page_rect);
                 let ann_type = make_type(clipped);
