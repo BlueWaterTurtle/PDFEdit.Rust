@@ -1,9 +1,10 @@
-use egui::{Color32, RichText, Ui};
+use egui::{Color32, RichText, ScrollArea, Ui};
 
 use crate::annotations::{color32_to_arr, HIGHLIGHT_COLORS};
 use crate::app::{ActiveTool, AppState};
 
 pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
+    ScrollArea::horizontal().show(ui, |ui| {
     ui.horizontal(|ui| {
         // ── File operations ──────────────────────────────────────────────
         ui.add_space(4.0);
@@ -57,16 +58,32 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
 
         // ── Tools ─────────────────────────────────────────────────────────
         tool_button(ui, state, ActiveTool::Select, "↖", "Select / move");
+
+        ui.separator();
+
+        // text-markup group
         tool_button(ui, state, ActiveTool::Highlight, "🖍", "Highlight text");
+        tool_button(ui, state, ActiveTool::Underline, "U̲", "Underline");
+        tool_button(ui, state, ActiveTool::Strikethrough, "S̶", "Strikethrough");
+
+        ui.separator();
+
+        // annotation group
         tool_button(ui, state, ActiveTool::TextBox, "T", "Add text box");
         tool_button(ui, state, ActiveTool::Comment, "💬", "Add comment");
+
+        ui.separator();
+
+        // drawing group
         tool_button(ui, state, ActiveTool::FreehandDraw, "✏", "Freehand draw");
         tool_button(ui, state, ActiveTool::Rectangle, "▭", "Draw rectangle");
         tool_button(ui, state, ActiveTool::Arrow, "→", "Draw arrow");
+
+        ui.separator();
+
+        // misc
         tool_button(ui, state, ActiveTool::Signature, "✍", "Add e-signature");
         tool_button(ui, state, ActiveTool::Eraser, "⌫", "Erase annotation");
-        tool_button(ui, state, ActiveTool::Underline, "U̲", "Underline");
-        tool_button(ui, state, ActiveTool::Strikethrough, "S̶", "Strikethrough");
 
         ui.separator();
 
@@ -87,7 +104,7 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         }
 
         // ── Ink options (draw tool) ───────────────────────────────────────
-        if matches!(state.active_tool, ActiveTool::FreehandDraw) {
+        if matches!(state.active_tool, ActiveTool::FreehandDraw | ActiveTool::Underline | ActiveTool::Strikethrough | ActiveTool::Rectangle | ActiveTool::Arrow) {
             ui.label("Ink:");
             ui.color_edit_button_srgba(&mut state.ink_color);
             ui.add(egui::Slider::new(&mut state.ink_width, 1.0..=12.0).text("Width"));
@@ -105,11 +122,15 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
 
         // ── Export ───────────────────────────────────────────────────────
         ui.menu_button("⬆ Export", |ui| {
-            if ui.button("📷 Export as Images (PNG)…").clicked() {
+            if ui.button("📷 Export as Images (PNG)…")
+                .on_hover_text("Export using current settings. Use '⚙ Export options…' to change DPI, format, etc.")
+                .clicked() {
                 state.action_export_images = true;
                 ui.close_menu();
             }
-            if ui.button("📄 Export as Word (DOCX)…").clicked() {
+            if ui.button("📄 Export as Word (DOCX)…")
+                .on_hover_text("Export using current settings. Use '⚙ Export options…' to change options.")
+                .clicked() {
                 state.action_export_docx = true;
                 ui.close_menu();
             }
@@ -145,6 +166,7 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
             state.show_info_dialog = !state.show_info_dialog;
         }
     });
+    }); // end ScrollArea::horizontal
 }
 
 fn icon_button(ui: &mut Ui, label: &str, tooltip: &str) -> egui::Response {
