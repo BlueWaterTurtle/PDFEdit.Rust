@@ -15,12 +15,20 @@ const ARROW_HEAD_LEN: f32 = 12.0;
 /// Pixel size of the comment sticky-note icon rendered on the canvas
 const COMMENT_ICON_SIZE: f32 = 24.0;
 
+/// Vertical margin (pixels) above and below each page within its allocation
+const PAGE_MARGIN: f32 = 20.0;
+
+/// Vertical gap (pixels) inserted between consecutive pages
+const PAGE_GAP: f32 = 12.0;
+
 /// Drag state for in-progress annotation creation
 #[derive(Debug, Default)]
 pub struct DragState {
     pub start: Option<Pos2>,
     pub current: Option<Pos2>,
     pub points: Vec<Pos2>,
+    /// Which page index this drag gesture started on (None if not yet set)
+    pub page: Option<usize>,
 }
 
 impl DragState {
@@ -32,115 +40,227 @@ impl DragState {
     }
 }
 
-/// Render the main PDF canvas with annotation overlay.
+/// Render the main PDF canvas with smooth vertical scrolling through all pages.
+///
+/// All pages are laid out vertically inside a single `ScrollArea::both()`.  Only
+/// pages that intersect the visible viewport are rendered (virtualised), so
+/// performance stays reasonable even for large documents.  The `current_page`
+/// field in `AppState` is updated every frame to reflect whichever page is
+/// closest to the centre of the viewport.
+///
 /// Returns any newly created annotation.
 pub fn show_canvas(ui: &mut Ui, state: &mut AppState) -> Option<Annotation> {
     let mut new_annotation: Option<Annotation> = None;
 
-    let doc_ref = match &state.document {
-        Some(d) => d,
+    // ── Early-out when no document is loaded ─────────────────────────────────
+    let page_count = match &state.document {
+        Some(d) => d.pages.len(),
         None => {
             show_empty_state(ui);
             return None;
         }
     };
 
-    let page_idx = state.current_page;
-    let page = match doc_ref.pages.get(page_idx) {
-        Some(p) => p,
-        None => {
-            ui.label("Page not available.");
-            return None;
-        }
-    };
-
-    // ── Page texture ─────────────────────────────────────────────────────────
-    let tex: TextureHandle = state
-        .page_textures
-        .entry(page_idx)
-        .or_insert_with(|| {
-            let img = &page.image;
-            let rgba = img.to_rgba8();
-            let size = [rgba.width() as usize, rgba.height() as usize];
-            let color_image = egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
-            ui.ctx().load_texture(
-                format!("page_{}", page_idx),
-                color_image,
-                egui::TextureOptions::LINEAR,
-            )
-        })
-        .clone();
-
-    let tex_size = tex.size_vec2();
-    let zoom = state.zoom;
-
-    // Fit-to-window: compute zoom so the page fills available width
+    // ── Fit-to-window: zoom so first page fills available width ───────────────
     if state.fit_to_window {
-        let avail_w = ui.available_width() - 40.0;
-        state.zoom = (avail_w / tex_size.x).max(0.25);
+        let avail_w = ui.available_width() - PAGE_MARGIN * 2.0;
+        if let Some(doc) = &state.document {
+            if let Some(first) = doc.pages.first() {
+                let img_w = first.image.width() as f32;
+                state.zoom = (avail_w / img_w).max(0.25);
+            }
+        }
         state.fit_to_window = false;
     }
 
-    let display_size = tex_size * zoom;
+    let zoom = state.zoom;
 
-    egui::ScrollArea::both()
-        .id_salt("page_scroll")
-        .show(ui, |ui| {
+    // ── Pre-compute display sizes for all pages ───────────────────────────────
+    // (ends the borrow of state.document before the ScrollArea closure)
+    let page_sizes: Vec<Vec2> = {
+        let doc = state.document.as_ref().unwrap();
+        doc.pages
+            .iter()
+            .map(|p| {
+                Vec2::new(
+                    p.image.width() as f32 * zoom,
+                    p.image.height() as f32 * zoom,
+                )
+            })
+            .collect()
+    };
+
+    // ── Compute programmatic scroll offset if scroll_to_page was requested ────
+    let scroll_target_y: Option<f32> = state.scroll_to_page.take().map(|target| {
+        let mut y = 0.0_f32;
+        for i in 0..target.min(page_count) {
+            y += page_sizes[i].y + PAGE_MARGIN * 2.0 + PAGE_GAP;
+        }
+        y
+    });
+
+    // ── Build the scrollable canvas ───────────────────────────────────────────
+    let mut scroll_area = egui::ScrollArea::both()
+        .id_salt("pdf_scroll")
+        .auto_shrink([false, false]);
+
+    if let Some(target_y) = scroll_target_y {
+        scroll_area = scroll_area.vertical_scroll_offset(target_y);
+    }
+
+    let avail_w = ui.available_width();
+
+    let output = scroll_area.show(ui, |ui| {
+        // Apply tool-appropriate cursor for the whole canvas
+        ui.ctx().set_cursor_icon(tool_cursor(&state.active_tool));
+
+        for page_idx in 0..page_count {
+            let page_w = page_sizes[page_idx].x;
+            let page_h = page_sizes[page_idx].y;
+
+            // Allocation: full available width (for centering) but at least
+            // wide enough to hold the page + margins (for horizontal scroll).
+            let alloc_w = avail_w.max(page_w + PAGE_MARGIN * 2.0);
+            let alloc_h = page_h + PAGE_MARGIN * 2.0;
+
             let (response, painter) =
-                ui.allocate_painter(display_size + Vec2::splat(40.0), Sense::drag());
+                ui.allocate_painter(Vec2::new(alloc_w, alloc_h), Sense::drag());
 
-            let page_origin = response.rect.min + Vec2::splat(20.0);
-            let page_rect = Rect::from_min_size(page_origin, display_size);
-
-            // ── Shadow ────────────────────────────────────────────────────
-            painter.rect_filled(
-                page_rect.translate(Vec2::new(4.0, 4.0)),
-                2.0,
-                Color32::from_rgba_premultiplied(0, 0, 0, 60),
+            // Centre the page image within the allocation
+            let page_rect = Rect::from_center_size(
+                Pos2::new(
+                    response.rect.center().x,
+                    response.rect.min.y + PAGE_MARGIN + page_h * 0.5,
+                ),
+                Vec2::new(page_w, page_h),
             );
 
-            // ── Page image ────────────────────────────────────────────────
-            painter.image(
-                tex.id(),
-                page_rect,
-                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
-                Color32::WHITE,
-            );
+            // ── Visible-page optimisation ─────────────────────────────────────
+            if response.rect.intersects(ui.clip_rect()) {
+                // Shadow
+                painter.rect_filled(
+                    page_rect.translate(Vec2::new(4.0, 4.0)),
+                    2.0,
+                    Color32::from_rgba_premultiplied(0, 0, 0, 60),
+                );
 
-            // ── Page border ───────────────────────────────────────────────
-            painter.rect_stroke(
-                page_rect,
-                0.0,
-                Stroke::new(1.0, Color32::from_gray(160)),
-            );
+                // Page texture (loaded on first visit, cached thereafter)
+                let tex: TextureHandle = {
+                    let doc = state.document.as_ref().unwrap();
+                    let page = &doc.pages[page_idx];
+                    state
+                        .page_textures
+                        .entry(page_idx)
+                        .or_insert_with(|| {
+                            let rgba = page.image.to_rgba8();
+                            let size = [rgba.width() as usize, rgba.height() as usize];
+                            let ci =
+                                egui::ColorImage::from_rgba_unmultiplied(size, rgba.as_raw());
+                            ui.ctx().load_texture(
+                                format!("page_{}", page_idx),
+                                ci,
+                                egui::TextureOptions::LINEAR,
+                            )
+                        })
+                        .clone()
+                };
 
-            // ── Existing annotations ──────────────────────────────────────
-            if let Some(doc) = &state.document {
-                let annotations: Vec<_> = doc
-                    .annotations
-                    .iter()
-                    .filter(|a| a.page == page_idx)
-                    .cloned()
-                    .collect();
-                for ann in &annotations {
-                    draw_annotation(&painter, ann, page_rect, ui.ctx(), &mut state.sig_textures);
+                // Page image
+                painter.image(
+                    tex.id(),
+                    page_rect,
+                    Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                    Color32::WHITE,
+                );
+
+                // Border
+                painter.rect_stroke(
+                    page_rect,
+                    0.0,
+                    Stroke::new(1.0, Color32::from_gray(160)),
+                );
+
+                // Existing annotations for this page
+                {
+                    let annotations: Vec<_> = if let Some(doc) = &state.document {
+                        doc.annotations
+                            .iter()
+                            .filter(|a| a.page == page_idx)
+                            .cloned()
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+                    for ann in &annotations {
+                        draw_annotation(
+                            &painter,
+                            ann,
+                            page_rect,
+                            ui.ctx(),
+                            &mut state.sig_textures,
+                        );
+                    }
+                }
+
+                // In-progress drag preview – only on the page where the drag started
+                let drag_page = state.drag_state.page;
+                if drag_page.is_none() || drag_page == Some(page_idx) {
+                    draw_drag_preview(&painter, state, page_rect);
+                }
+
+                // Input handling
+                if let Some(ann) = handle_input(&response, state, page_rect, page_idx) {
+                    new_annotation = Some(ann);
+                }
+
+                // Page number label (below page image)
+                painter.text(
+                    Pos2::new(page_rect.min.x, page_rect.max.y + 4.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("Page {}", page_idx + 1),
+                    egui::FontId::proportional(11.0),
+                    Color32::from_gray(120),
+                );
+            } else if state.drag_state.page == Some(page_idx) {
+                // Page is off-screen but owns the active drag – keep updating drag state
+                // and capture any annotation created when the drag ends.
+                if let Some(ann) = handle_input(&response, state, page_rect, page_idx) {
+                    new_annotation = Some(ann);
                 }
             }
 
-            // ── In-progress drag preview ──────────────────────────────────
-            draw_drag_preview(&painter, state, page_rect);
+            // Gap between pages (not after the last page)
+            if page_idx + 1 < page_count {
+                ui.add_space(PAGE_GAP);
+            }
+        }
+    });
 
-            // ── Input handling ────────────────────────────────────────────
-            let cursor = tool_cursor(&state.active_tool);
-            ui.ctx().set_cursor_icon(cursor);
+    // ── Update current_page from scroll position ──────────────────────────────
+    // "Current" = the page whose vertical centre is nearest to the centre of
+    // the visible viewport (scroll_y + viewport_h / 2).
+    {
+        let scroll_y = output.state.offset.y;
+        let viewport_h = output.inner_rect.height();
+        let viewport_centre = scroll_y + viewport_h * 0.5;
 
-            new_annotation = handle_input(
-                &response,
-                state,
-                page_rect,
-                page_idx,
-            );
-        });
+        let mut y = 0.0_f32;
+        let mut new_current = 0_usize;
+        let mut min_dist = f32::INFINITY;
+        for (i, size) in page_sizes.iter().enumerate() {
+            let page_centre = y + PAGE_MARGIN + size.y * 0.5;
+            let dist = (page_centre - viewport_centre).abs();
+            if dist < min_dist {
+                min_dist = dist;
+                new_current = i;
+            }
+            y += size.y + PAGE_MARGIN * 2.0 + PAGE_GAP;
+        }
+
+        if page_count > 0 {
+            state.current_page = new_current.min(page_count - 1);
+        }
+    }
 
     new_annotation
 }
@@ -419,6 +539,7 @@ fn handle_input(
             if response.drag_started() && on_page {
                 state.drag_state.start = Some(pointer);
                 state.drag_state.current = Some(pointer);
+                state.drag_state.page = Some(page_idx);
             }
             if response.dragged() {
                 state.drag_state.current = Some(pointer);
@@ -464,6 +585,7 @@ fn handle_input(
             if response.drag_started() && on_page {
                 state.drag_state.points.clear();
                 state.drag_state.start = Some(pointer);
+                state.drag_state.page = Some(page_idx);
             }
             if response.dragged() && on_page {
                 state.drag_state.points.push(pointer);
@@ -577,6 +699,7 @@ where
     if response.drag_started() && on_page {
         state.drag_state.start = Some(pointer);
         state.drag_state.current = Some(pointer);
+        state.drag_state.page = Some(page_idx);
     }
     if response.dragged() {
         state.drag_state.current = Some(pointer);

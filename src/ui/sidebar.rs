@@ -20,7 +20,7 @@ pub fn show_left_sidebar(ui: &mut Ui, state: &mut AppState) {
                     format!("📄 Page {}", page_idx + 1),
                 );
                 if resp.clicked() {
-                    state.current_page = page_idx;
+                    state.scroll_to_page = Some(page_idx);
                 }
             }
         });

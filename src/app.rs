@@ -100,6 +100,9 @@ pub struct AppState {
     pub export_include_annotations: bool,
     pub export_format: ImageFormat,
 
+    // Smooth-scroll target: set to Some(page) to jump the scroll area to that page
+    pub scroll_to_page: Option<usize>,
+
     // One-shot action flags (set by UI, consumed by update)
     pub action_open_file: bool,
     pub action_save: bool,
@@ -152,6 +155,7 @@ impl AppState {
             export_dpi: 150,
             export_include_annotations: true,
             export_format: ImageFormat::Png,
+            scroll_to_page: None,
             action_open_file: false,
             action_save: false,
             action_prev_page: false,
@@ -294,7 +298,7 @@ impl eframe::App for PdfEditorApp {
         if s.action_prev_page {
             s.action_prev_page = false;
             if s.current_page > 0 {
-                s.current_page -= 1;
+                s.scroll_to_page = Some(s.current_page - 1);
             }
         }
 
@@ -302,7 +306,7 @@ impl eframe::App for PdfEditorApp {
             s.action_next_page = false;
             if let Some(doc) = &s.document {
                 if s.current_page + 1 < doc.page_count() {
-                    s.current_page += 1;
+                    s.scroll_to_page = Some(s.current_page + 1);
                 }
             }
         }
