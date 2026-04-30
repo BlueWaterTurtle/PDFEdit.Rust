@@ -249,12 +249,6 @@ fn svg_tool_button(
 
 // ── Text/glyph button helpers (kept for tools without a matching SVG) ─────────
 
-#[allow(dead_code)]
-fn icon_button(ui: &mut Ui, label: &str, tooltip: &str) -> egui::Response {
-    ui.button(RichText::new(label).size(15.0))
-        .on_hover_text(tooltip)
-}
-
 fn tool_button(
     ui: &mut Ui,
     state: &mut AppState,

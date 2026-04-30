@@ -55,7 +55,7 @@ impl IconCache {
     }
 }
 
-/// Rasterises SVG bytes to an `size_px × size_px` RGBA [`ColorImage`].
+/// Rasterises SVG bytes to a `size_px × size_px` RGBA [`ColorImage`].
 fn rasterize_svg(svg_bytes: &[u8], size_px: u32) -> Result<ColorImage, Box<dyn std::error::Error>> {
     use resvg::{tiny_skia, usvg};
 
