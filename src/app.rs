@@ -12,6 +12,7 @@ use crate::signature::SignaturePad;
 use crate::ui::{
     canvas::{show_canvas, DragState},
     dialogs::{show_comment_dialog, show_export_dialog, show_info_dialog, show_signature_dialog, show_status_bar, show_textbox_dialog},
+    icons::IconCache,
     sidebar::{show_left_sidebar, show_right_sidebar},
     toolbar::show_toolbar,
 };
@@ -83,6 +84,9 @@ pub struct AppState {
     pub page_textures: HashMap<usize, TextureHandle>,
     pub sig_textures: HashMap<String, TextureHandle>,
 
+    // Cached toolbar SVG icon textures
+    pub icon_cache: IconCache,
+
     // UI state
     pub show_info_dialog: bool,
     pub show_textbox_dialog: bool,
@@ -144,6 +148,7 @@ impl AppState {
             redo_stack: Vec::new(),
             page_textures: HashMap::new(),
             sig_textures: HashMap::new(),
+            icon_cache: IconCache::new(),
             show_info_dialog: false,
             show_textbox_dialog: false,
             show_signature_dialog: false,

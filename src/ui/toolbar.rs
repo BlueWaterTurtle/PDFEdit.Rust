@@ -2,6 +2,36 @@ use egui::{Color32, RichText, ScrollArea, Ui};
 
 use crate::annotations::{color32_to_arr, HIGHLIGHT_COLORS};
 use crate::app::{ActiveTool, AppState};
+use crate::ui::icons::IconCache;
+
+// ── Embedded Lucide SVG icons ─────────────────────────────────────────────────
+//
+// To add a new toolbar icon:
+//   1. Put the `.svg` file in `assets/icons/lucide/`.
+//   2. Add a constant here with `include_bytes!`.
+//   3. Call `svg_icon_button` or `svg_tool_button` with a unique key string.
+//
+// Icons live at: assets/icons/lucide/
+
+const ICON_OPEN: &[u8]      = include_bytes!("../../assets/icons/lucide/folder-open.svg");
+const ICON_SAVE: &[u8]      = include_bytes!("../../assets/icons/lucide/save.svg");
+const ICON_PREV: &[u8]      = include_bytes!("../../assets/icons/lucide/arrow-left.svg");
+const ICON_NEXT: &[u8]      = include_bytes!("../../assets/icons/lucide/arrow-right.svg");
+const ICON_ZOOM_OUT: &[u8]  = include_bytes!("../../assets/icons/lucide/zoom-out.svg");
+const ICON_ZOOM_IN: &[u8]   = include_bytes!("../../assets/icons/lucide/zoom-in.svg");
+const ICON_FIT: &[u8]       = include_bytes!("../../assets/icons/lucide/maximize.svg");
+const ICON_OCR: &[u8]       = include_bytes!("../../assets/icons/lucide/scan-eye.svg");
+const ICON_PRINT: &[u8]     = include_bytes!("../../assets/icons/lucide/printer.svg");
+const ICON_UNDO: &[u8]      = include_bytes!("../../assets/icons/lucide/undo-2.svg");
+const ICON_REDO: &[u8]      = include_bytes!("../../assets/icons/lucide/redo-2.svg");
+const ICON_INFO: &[u8]      = include_bytes!("../../assets/icons/lucide/info.svg");
+const ICON_SELECT: &[u8]    = include_bytes!("../../assets/icons/lucide/mouse-pointer-2.svg");
+const ICON_HIGHLIGHT: &[u8] = include_bytes!("../../assets/icons/lucide/highlighter.svg");
+
+// ── Logical display size for toolbar icons (in egui points) ──────────────────
+const ICON_SIZE: f32 = 18.0;
+
+// ── Public entry point ────────────────────────────────────────────────────────
 
 pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
     ScrollArea::horizontal().show(ui, |ui| {
@@ -9,10 +39,10 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         // ── File operations ──────────────────────────────────────────────
         ui.add_space(4.0);
 
-        if icon_button(ui, "📂", "Open PDF").clicked() {
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_open", ICON_OPEN, "Open PDF").clicked() {
             state.action_open_file = true;
         }
-        if icon_button(ui, "💾", "Save annotations").clicked() {
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_save", ICON_SAVE, "Save annotations").clicked() {
             state.action_save = true;
         }
 
@@ -20,7 +50,7 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
 
         // ── Navigation ───────────────────────────────────────────────────
         ui.label(RichText::new("Page").small());
-        if icon_button(ui, "◀", "Previous page").clicked() {
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_prev", ICON_PREV, "Previous page").clicked() {
             state.action_prev_page = true;
         }
 
@@ -31,14 +61,14 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         };
         ui.label(RichText::new(&page_label).monospace().strong());
 
-        if icon_button(ui, "▶", "Next page").clicked() {
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_next", ICON_NEXT, "Next page").clicked() {
             state.action_next_page = true;
         }
 
         ui.separator();
 
         // ── Zoom ─────────────────────────────────────────────────────────
-        if icon_button(ui, "🔍−", "Zoom out").clicked() {
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_zoom_out", ICON_ZOOM_OUT, "Zoom out").clicked() {
             state.zoom = (state.zoom - 0.1).max(0.25);
         }
         ui.label(
@@ -46,10 +76,10 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
                 .monospace()
                 .small(),
         );
-        if icon_button(ui, "🔍+", "Zoom in").clicked() {
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_zoom_in", ICON_ZOOM_IN, "Zoom in").clicked() {
             state.zoom = (state.zoom + 0.1).min(4.0);
         }
-        if icon_button(ui, "⊙", "Fit to window").clicked() {
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_fit", ICON_FIT, "Fit to window").clicked() {
             state.zoom = 1.0;
             state.fit_to_window = true;
         }
@@ -57,12 +87,14 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         ui.separator();
 
         // ── Tools ─────────────────────────────────────────────────────────
-        tool_button(ui, state, ActiveTool::Select, "↖", "Select / move");
+        svg_tool_button(ui, &mut state.icon_cache, &mut state.active_tool,
+            ActiveTool::Select, "icon_select", ICON_SELECT, "Select / move");
 
         ui.separator();
 
         // text-markup group
-        tool_button(ui, state, ActiveTool::Highlight, "🖍", "Highlight text");
+        svg_tool_button(ui, &mut state.icon_cache, &mut state.active_tool,
+            ActiveTool::Highlight, "icon_highlight", ICON_HIGHLIGHT, "Highlight text");
         tool_button(ui, state, ActiveTool::Underline, "U̲", "Underline");
         tool_button(ui, state, ActiveTool::Strikethrough, "S̶", "Strikethrough");
 
@@ -112,8 +144,8 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         }
 
         // ── OCR ──────────────────────────────────────────────────────────
-        if icon_button(ui, "👁 OCR", "Run character recognition on this page")
-            .clicked()
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_ocr", ICON_OCR,
+            "Run character recognition on this page").clicked()
         {
             state.action_ocr_page = true;
         }
@@ -142,19 +174,19 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         });
 
         // ── Print ─────────────────────────────────────────────────────────
-        if icon_button(ui, "🖨", "Print document").clicked() {
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_print", ICON_PRINT, "Print document").clicked() {
             state.action_print = true;
         }
 
         // ── Undo / Redo ───────────────────────────────────────────────────
         ui.separator();
         ui.add_enabled_ui(!state.undo_stack.is_empty(), |ui| {
-            if icon_button(ui, "↩", "Undo").clicked() {
+            if svg_icon_button(ui, &mut state.icon_cache, "icon_undo", ICON_UNDO, "Undo").clicked() {
                 state.action_undo = true;
             }
         });
         ui.add_enabled_ui(!state.redo_stack.is_empty(), |ui| {
-            if icon_button(ui, "↪", "Redo").clicked() {
+            if svg_icon_button(ui, &mut state.icon_cache, "icon_redo", ICON_REDO, "Redo").clicked() {
                 state.action_redo = true;
             }
         });
@@ -162,17 +194,60 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         ui.separator();
 
         // ── Document info button ─────────────────────────────────────────
-        if icon_button(ui, "ℹ", "Document information").clicked() {
+        if svg_icon_button(ui, &mut state.icon_cache, "icon_info", ICON_INFO, "Document information").clicked() {
             state.show_info_dialog = !state.show_info_dialog;
         }
     });
     }); // end ScrollArea::horizontal
 }
 
-fn icon_button(ui: &mut Ui, label: &str, tooltip: &str) -> egui::Response {
-    ui.button(RichText::new(label).size(15.0))
+// ── SVG icon button helpers ───────────────────────────────────────────────────
+
+/// Renders a toolbar button using a Lucide SVG texture and returns the [`egui::Response`].
+///
+/// The `key` must be unique per icon (it is the texture cache key).
+/// `svg_bytes` should come from an `include_bytes!` constant.
+fn svg_icon_button(
+    ui: &mut Ui,
+    icon_cache: &mut IconCache,
+    key: &str,
+    svg_bytes: &[u8],
+    tooltip: &str,
+) -> egui::Response {
+    let size = egui::Vec2::splat(ICON_SIZE);
+    // Rasterise at physical pixel resolution for crisp rendering at any DPI.
+    let raster_px = (ICON_SIZE * ui.ctx().pixels_per_point()).ceil() as u32;
+    let tex_id = icon_cache.get(ui.ctx(), key, svg_bytes, raster_px);
+    ui.add(egui::ImageButton::new(egui::load::SizedTexture::new(tex_id, size)))
         .on_hover_text(tooltip)
 }
+
+/// Renders a toolbar toggle button for a drawing/annotation tool using a Lucide SVG texture.
+///
+/// The button is visually highlighted when `tool` matches `*active_tool`.
+fn svg_tool_button(
+    ui: &mut Ui,
+    icon_cache: &mut IconCache,
+    active_tool: &mut ActiveTool,
+    tool: ActiveTool,
+    key: &str,
+    svg_bytes: &[u8],
+    tooltip: &str,
+) {
+    let selected =
+        std::mem::discriminant(active_tool) == std::mem::discriminant(&tool);
+    let size = egui::Vec2::splat(ICON_SIZE);
+    let raster_px = (ICON_SIZE * ui.ctx().pixels_per_point()).ceil() as u32;
+    let tex_id = icon_cache.get(ui.ctx(), key, svg_bytes, raster_px);
+    let resp = ui
+        .add(egui::ImageButton::new(egui::load::SizedTexture::new(tex_id, size)).selected(selected))
+        .on_hover_text(tooltip);
+    if resp.clicked() {
+        *active_tool = tool;
+    }
+}
+
+// ── Text/glyph button helpers (kept for tools without a matching SVG) ─────────
 
 fn tool_button(
     ui: &mut Ui,
