@@ -23,6 +23,25 @@ High level PDF editor written in rust
 | Zoom | 🔍− / 🔍+ buttons |
 | Fit to window | ⊙ button in the toolbar |
 
+## Toolbar icons
+
+Toolbar icons are [Lucide](https://lucide.dev/) SVGs stored in `assets/icons/lucide/`.
+They are **embedded in the binary** at compile time via `include_bytes!` – no files need to be shipped alongside the executable.
+
+### Adding a new toolbar icon
+
+1. Download the `.svg` from <https://lucide.dev/icons/> and save it to `assets/icons/lucide/<name>.svg`.
+2. In `src/ui/toolbar.rs`, add a constant:
+   ```rust
+   const ICON_MY_ICON: &[u8] = include_bytes!("../../assets/icons/lucide/<name>.svg");
+   ```
+3. Call `svg_icon_button` (or `svg_tool_button` for toggle tools):
+   ```rust
+   svg_icon_button(ui, &mut state.icon_cache, "icon_my_icon", ICON_MY_ICON, "Tooltip text")
+   ```
+
+The icon cache (`src/ui/icons.rs` → `IconCache`) rasterises each SVG once per unique *(key, pixel-size)* pair and caches the resulting `egui::TextureHandle` for the lifetime of the app.
+
 ## Requirements
 
 - Rust (stable)
