@@ -1,3 +1,13 @@
+## Disclaimer
+This is a work in progess project. It is not complete. I will remove this message once I determine the code is in a dependable state. 
+Review the code before implimenting it for any purpose. The majority of the code in this project was prompted. 
+Thank you, 
+
+
+
+
+
+
 # PDFEdit.Rust
 High level PDF editor written in rust
 
