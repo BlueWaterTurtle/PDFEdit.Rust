@@ -87,13 +87,13 @@ pub fn show_toolbar(ui: &mut Ui, state: &mut AppState) {
         ui.separator();
 
         // ── Tools ─────────────────────────────────────────────────────────
-        svg_tool_button(ui, &mut state.icon_cache, &mut state.active_tool,
+        svg_tool_button(ui, state,
             ActiveTool::Select, "icon_select", ICON_SELECT, "Select / move");
 
         ui.separator();
 
         // text-markup group
-        svg_tool_button(ui, &mut state.icon_cache, &mut state.active_tool,
+        svg_tool_button(ui, state,
             ActiveTool::Highlight, "icon_highlight", ICON_HIGHLIGHT, "Highlight text");
         tool_button(ui, state, ActiveTool::Underline, "U̲", "Underline");
         tool_button(ui, state, ActiveTool::Strikethrough, "S̶", "Strikethrough");
@@ -224,26 +224,26 @@ fn svg_icon_button(
 
 /// Renders a toolbar toggle button for a drawing/annotation tool using a Lucide SVG texture.
 ///
-/// The button is visually highlighted when `tool` matches `*active_tool`.
+/// The button is visually highlighted when `tool` matches `state.active_tool`.
 fn svg_tool_button(
     ui: &mut Ui,
-    icon_cache: &mut IconCache,
-    active_tool: &mut ActiveTool,
+    state: &mut AppState,
     tool: ActiveTool,
     key: &str,
     svg_bytes: &[u8],
     tooltip: &str,
 ) {
     let selected =
-        std::mem::discriminant(active_tool) == std::mem::discriminant(&tool);
+        std::mem::discriminant(&state.active_tool) == std::mem::discriminant(&tool);
     let size = egui::Vec2::splat(ICON_SIZE);
     let raster_px = (ICON_SIZE * ui.ctx().pixels_per_point()).ceil() as u32;
-    let tex_id = icon_cache.get(ui.ctx(), key, svg_bytes, raster_px);
+    let tex_id = state.icon_cache.get(ui.ctx(), key, svg_bytes, raster_px);
     let resp = ui
         .add(egui::ImageButton::new(egui::load::SizedTexture::new(tex_id, size)).selected(selected))
         .on_hover_text(tooltip);
     if resp.clicked() {
-        *active_tool = tool;
+        state.set_status(format!("{tooltip} selected."));
+        state.active_tool = tool;
     }
 }
 
@@ -269,6 +269,7 @@ fn tool_button(
         )
         .on_hover_text(tooltip);
     if resp.clicked() {
+        state.set_status(format!("{tooltip} selected."));
         state.active_tool = tool;
     }
 }

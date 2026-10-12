@@ -124,7 +124,7 @@ pub fn show_canvas(ui: &mut Ui, state: &mut AppState) -> Option<Annotation> {
             let alloc_h = page_h + PAGE_MARGIN * 2.0;
 
             let (response, painter) =
-                ui.allocate_painter(Vec2::new(alloc_w, alloc_h), Sense::drag());
+                ui.allocate_painter(Vec2::new(alloc_w, alloc_h), Sense::click_and_drag());
 
             // Centre the page image within the allocation
             let page_rect = Rect::from_center_size(
@@ -476,6 +476,7 @@ fn handle_input(
         ActiveTool::Select => {
             if response.drag_started() && on_page {
                 let rel = normalise(pointer, page_rect);
+                let mut selected_any = false;
                 if let Some(doc) = &mut state.document {
                     for ann in &mut doc.annotations {
                         if ann.page == page_idx {
@@ -484,8 +485,14 @@ fn handle_input(
                                 Pos2::new(ann.rect[2], ann.rect[3]),
                             );
                             ann.selected = ann_r.contains(rel);
+                            if ann.selected {
+                                selected_any = true;
+                            }
                         }
                     }
+                }
+                if selected_any {
+                    state.set_status("Annotation selected.");
                 }
             }
             None
@@ -494,21 +501,35 @@ fn handle_input(
         ActiveTool::Eraser => {
             if response.clicked() && on_page {
                 let rel = normalise(pointer, page_rect);
-                if let Some(doc) = &mut state.document {
-                    let before = doc.annotations.len();
-                    doc.annotations.retain(|a| {
-                        if a.page != page_idx {
-                            return true;
+                // Snapshot for undo before removing anything
+                state.push_undo();
+                let removed = {
+                    let mut count = 0usize;
+                    if let Some(doc) = &mut state.document {
+                        let before = doc.annotations.len();
+                        doc.annotations.retain(|a| {
+                            if a.page != page_idx {
+                                return true;
+                            }
+                            let ar = Rect::from_min_max(
+                                Pos2::new(a.rect[0], a.rect[1]),
+                                Pos2::new(a.rect[2], a.rect[3]),
+                            );
+                            !ar.expand(0.02).contains(rel)
+                        });
+                        count = before.saturating_sub(doc.annotations.len());
+                        if count > 0 {
+                            doc.modified = true;
                         }
-                        let ar = Rect::from_min_max(
-                            Pos2::new(a.rect[0], a.rect[1]),
-                            Pos2::new(a.rect[2], a.rect[3]),
-                        );
-                        !ar.expand(0.02).contains(rel)
-                    });
-                    if doc.annotations.len() < before {
-                        doc.modified = true;
                     }
+                    count
+                };
+                if removed > 0 {
+                    state.set_status(format!("Erased {} annotation(s).", removed));
+                } else {
+                    // Nothing was erased – discard the undo snapshot we just pushed
+                    state.undo_stack.pop();
+                    state.set_status("No annotation at click point.");
                 }
             }
             None
@@ -516,21 +537,29 @@ fn handle_input(
 
         ActiveTool::Highlight => {
             let color = state.highlight_color;
-            handle_rect_drag(response, state, page_rect, page_idx, |_| {
+            let result = handle_rect_drag(response, state, page_rect, page_idx, |_| {
                 AnnotationType::Highlight { color }
-            })
+            });
+            if result.is_some() {
+                state.set_status("Highlight added.");
+            }
+            result
         }
 
         ActiveTool::Rectangle => {
             let ink = state.ink_color;
             let ink_width = state.ink_width;
-            handle_rect_drag(response, state, page_rect, page_idx, |_| {
+            let result = handle_rect_drag(response, state, page_rect, page_idx, |_| {
                 AnnotationType::Rectangle {
                     stroke_color: [ink.r(), ink.g(), ink.b(), ink.a()],
                     fill_color: None,
                     stroke_width: ink_width,
                 }
-            })
+            });
+            if result.is_some() {
+                state.set_status("Rectangle added.");
+            }
+            result
         }
 
         ActiveTool::Arrow => {
@@ -563,6 +592,7 @@ fn handle_input(
                         from[1].max(to[1]),
                     ];
                     state.drag_state = DragState::default();
+                    state.set_status("Arrow added.");
                     return Some(Annotation::new(
                         page_idx,
                         rect,
@@ -611,6 +641,7 @@ fn handle_input(
                 let rect = [min_x, min_y, max_x, max_y];
 
                 state.drag_state = DragState::default();
+                state.set_status("Freehand stroke added.");
                 return Some(Annotation::new(
                     page_idx,
                     rect,
@@ -634,6 +665,7 @@ fn handle_input(
                     (rel.y + 0.05).min(1.0),
                 ]);
                 state.show_textbox_dialog = true;
+                state.set_status("Text box: fill in the dialog and click Apply.");
             }
             None
         }
@@ -648,6 +680,7 @@ fn handle_input(
                     (rel.y + 0.08).min(1.0),
                 ]);
                 state.show_signature_dialog = true;
+                state.set_status("Signature: draw in the pad and click Apply.");
             }
             None
         }
@@ -663,6 +696,7 @@ fn handle_input(
                     (rel.y + 0.04).min(1.0),
                 ]);
                 state.show_comment_dialog = true;
+                state.set_status("Comment: fill in the dialog and click Add Comment.");
             }
             None
         }
@@ -670,14 +704,22 @@ fn handle_input(
         ActiveTool::Underline | ActiveTool::Strikethrough => {
             let ink = state.ink_color;
             let is_underline = matches!(state.active_tool, ActiveTool::Underline);
-            handle_rect_drag(response, state, page_rect, page_idx, |_| {
+            let result = handle_rect_drag(response, state, page_rect, page_idx, |_| {
                 let color = [ink.r(), ink.g(), ink.b(), 255];
                 if is_underline {
                     AnnotationType::Underline { color }
                 } else {
                     AnnotationType::Strikethrough { color }
                 }
-            })
+            });
+            if result.is_some() {
+                if is_underline {
+                    state.set_status("Underline added.");
+                } else {
+                    state.set_status("Strikethrough added.");
+                }
+            }
+            result
         }
     }
 }
